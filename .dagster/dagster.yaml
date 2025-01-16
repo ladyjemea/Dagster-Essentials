@@ -1,0 +1,30 @@
+run_storage:
+  module: dagster._core.storage.runs
+  class: SqliteRunStorage
+  config:
+    base_dir: ./.dagster/runs
+
+event_log_storage:
+  module: dagster._core.storage.event_log
+  class: SqliteEventLogStorage
+  config:
+    base_dir: ./.dagster/event_logs
+
+schedule_storage:
+  module: dagster._core.storage.schedules
+  class: SqliteScheduleStorage
+  config:
+    base_dir: ./.dagster/schedules
+
+compute_logs:
+  module: dagster._core.storage.compute_log_manager
+  class: LocalComputeLogManager
+  config:
+    base_dir: ./.dagster/compute_logs
+
+local_artifact_storage:
+  module: dagster._core.storage.root
+  class: LocalArtifactStorage
+  config:
+    base_dir: ./.dagster/artifacts
+
