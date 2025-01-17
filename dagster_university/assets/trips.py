@@ -32,6 +32,9 @@ def taxi_zones_file() -> None:
         "https://data.cityofnewyork.us/api/views/755u-8jsi/rows.csv?accessType=DOWNLOAD"
     )
 
+    file_path = "data/raw/taxi_zones.csv"
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
     with open(constants.TAXI_TRIPS_TEMPLATE_FILE_PATH, "wb") as output_file:
         output_file.write(raw_zones.content)
 
@@ -71,7 +74,7 @@ def taxi_trips() -> None:
 
 @asset(deps=["taxi_zones_file"])
 def taxi_zones() -> None:
-    query = """
+    query = f"""
         create or replace table zones as (
           select
             LocationID as zone_id,
