@@ -1,4 +1,5 @@
 import base64
+import os
 
 import geopandas as gpd
 import pandas as pd
@@ -90,7 +91,7 @@ def manhattan_stats(database: DuckDBResource):
             zones.zone,
             zones.borough,
             zones.geometry,
-            count(1) as num_trips,
+            count(1) as num_trips
         from trips
         left join zones on trips.pickup_zone_id = zones.zone_id
         where geometry is not null
@@ -100,11 +101,15 @@ def manhattan_stats(database: DuckDBResource):
     with database.get_connection() as conn:
         trips_by_zone = conn.execute(query).fetch_df()
 
-    trips_by_zone["geometry"] = gpd.GeoSeries.from_wkt(trips_by_zone["geometry"])
+    # Clean the geometry column
+    trips_by_zone = trips_by_zone[trips_by_zone["geometry"].notnull()]  # Remove nulls
+    trips_by_zone["geometry"] = gpd.GeoSeries.from_wkt(
+        trips_by_zone["geometry"], on_invalid="ignore"
+    )
     trips_by_zone = gpd.GeoDataFrame(trips_by_zone)
 
-    with open(constants.MANHATTAN_STATS_FILE_PATH, "w") as output_file:
-        output_file.write(trips_by_zone.to_json())
+    # Write the GeoDataFrame to a GeoJSON file
+    trips_by_zone.to_file(constants.MANHATTAN_STATS_FILE_PATH, driver="GeoJSON")
 
 
 @asset(
@@ -116,8 +121,26 @@ def manhattan_map():
     A map of the number of trips per taxi zone in Manhattan
     """
 
-    trips_by_zone = gpd.read_file("data/staging/manhattan_stats.geojson")
+    file_path = constants.MANHATTAN_STATS_FILE_PATH
 
+    # Ensure the GeoJSON file exists
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"GeoJSON file not found: {file_path}")
+
+    # Read the GeoJSON file
+    trips_by_zone = gpd.read_file(file_path)
+
+    # Ensure required columns exist
+    if (
+        "geometry" not in trips_by_zone.columns
+        or "num_trips" not in trips_by_zone.columns
+    ):
+        raise ValueError(f"Required columns missing in {file_path}")
+
+    # Remove rows with null or invalid geometries
+    trips_by_zone = trips_by_zone[trips_by_zone["geometry"].notnull()]
+
+    # Create the Plotly figure
     fig = px.choropleth_mapbox(
         trips_by_zone,
         geojson=trips_by_zone.geometry.__geo_interface__,
@@ -131,12 +154,17 @@ def manhattan_map():
         labels={"num_trips": "Number of Trips"},
     )
 
-    pio.write_image(fig, constants.MANHATTAN_MAP_FILE_PATH)
+    # Save the map as an image
+    try:
+        pio.write_image(fig, constants.MANHATTAN_MAP_FILE_PATH)
+    except Exception as e:
+        print(f"Failed to save the image: {e}")
+        raise
 
+    # Convert the image to Base64 for metadata preview
     with open(constants.MANHATTAN_MAP_FILE_PATH, "rb") as file:
         image_data = file.read()
 
-    # Convert the image data to base64
     base64_data = base64.b64encode(image_data).decode("utf-8")
     md_content = f"![Image](data:image/jpeg;base64,{base64_data})"
 
